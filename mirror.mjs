@@ -1,7 +1,7 @@
 // Snapshot ventorme.ai (pages + every same-origin asset they pull in) into ./site for offline CRO analysis.
 // Trackers are defanged so the copy never reports into their analytics. Usage: node mirror.mjs
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ORIGIN = 'https://ventorme.ai';
@@ -21,6 +21,9 @@ const seen = new Set(), queue = [], failed = [];
 const add = p => { if (!seen.has(p)) { seen.add(p); queue.push(p); } };
 
 async function grab(p) {
+  // paths come from downloaded content, so never write outside ./site (e.g. "/../../x.js" or "%2e%2e%2f")
+  const file = resolve(OUT, '.' + (PAGES.includes(p) ? `${p}/index.html` : decodeURIComponent(p)));
+  if (!file.startsWith(resolve(OUT) + sep)) return failed.push(`unsafe path ${p}`);
   const res = await fetch(ORIGIN + p, { headers: { 'accept-language': 'ru', cookie: 'locale=ru' } });
   if (!res.ok) return failed.push(`${res.status} ${p}`);
   let body = Buffer.from(await res.arrayBuffer());
@@ -37,7 +40,6 @@ async function grab(p) {
     }
     body = Buffer.from(t);
   }
-  const file = PAGES.includes(p) ? join(OUT, p, 'index.html') : join(OUT, decodeURIComponent(p));
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, body);
 }
